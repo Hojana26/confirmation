@@ -117,21 +117,70 @@
         .action-btns { max-width: 800px; margin: 20px auto; text-align: center; display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; }
         .action-btns .btn { width: auto; min-width: 180px; margin-bottom: 0; flex: 1; }
 
-        /* --- PRINT STYLES --- */
+        /* --- IMPROVED PRINT STYLES --- */
+        @page {
+          size: A4 portrait;
+          margin: 10mm;
+        }
+
         @media print {
-            body { background: white; padding: 0; margin: 0; }
-            body * { visibility: hidden; }
-            #voucher-content, #voucher-content * { visibility: visible; }
-            #voucher-content {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-                margin: 0;
-                padding: 15mm;
-                box-shadow: none;
-            }
-            #actionButtons, #form-section { display: none !important; }
+          html,
+          body {
+            background: #fff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100%;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+
+          body * {
+            visibility: hidden !important;
+          }
+
+          #voucher-content,
+          #voucher-content * {
+            visibility: visible !important;
+          }
+
+          #form-section,
+          #actionButtons {
+            display: none !important;
+          }
+
+          #voucher-result {
+            display: block !important;
+          }
+
+          #voucher-content {
+            position: static !important;
+            width: 100% !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            box-sizing: border-box !important;
+            page-break-inside: avoid;
+          }
+
+          .voucher-logo {
+            max-width: 220px;
+            max-height: 90px;
+            object-fit: contain;
+          }
+
+          table,
+          .details-grid,
+          .notes-box,
+          .connectivity-box {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+
+          .footer {
+            position: static !important;
+            margin-top: 24px;
+          }
         }
     </style>
 </head>
@@ -478,78 +527,54 @@
             window.print();
         }
 
-        
-function sendWhatsApp() {
-  const phoneInput = document.getElementById("guestWhatsapp");
-  let phone = phoneInput.value.replace(/\D/g, "");
+        function sendWhatsApp() {
+            const phoneInput = document.getElementById("guestWhatsapp");
+            let phone = phoneInput.value.replace(/\D/g, "");
 
-  // Add India's country code when a 10-digit number is entered.
-  if (phone.length === 10) {
-    phone = "91" + phone;
-  }
+            // Add India's country code when a 10-digit number is entered.
+            if (phone.length === 10) {
+                phone = "91" + phone;
+            }
 
-  // International format: country code + subscriber number.
-  if (!/^[1-9]\d{7,14}$/.test(phone)) {
-    alert(
-      "Enter a valid WhatsApp number with country code, e.g. 919876543210."
-    );
-    phoneInput.focus();
-    return;
-  }
+            // International format: country code + subscriber number.
+            if (!/^[1-9]\d{7,14}$/.test(phone)) {
+                alert("Enter a valid WhatsApp number with country code, e.g. 919876543210.");
+                phoneInput.focus();
+                return;
+            }
 
-  const guestName =
-    document.getElementById("v-guestName").textContent.trim() || "Guest";
+            const guestName = document.getElementById("v-guestName").textContent.trim() || "Guest";
+            const voucherNo = document.getElementById("v-voucherNo").textContent.trim();
+            const checkIn = document.getElementById("v-checkIn").textContent.trim();
+            const checkOut = document.getElementById("v-checkOut").textContent.trim();
+            const payable = document.getElementById("v-payable").textContent.trim();
 
-  const voucherNo =
-    document.getElementById("v-voucherNo").textContent.trim();
+            const message = [
+                `Dear ${guestName},`,
+                "",
+                "Greetings from Hotel Rishikanya Grand, Jorhat!",
+                "",
+                "Your hotel booking confirmation is ready.",
+                `Confirmation No.: ${voucherNo}`,
+                `Check-in: ${checkIn}`,
+                `Check-out: ${checkOut}`,
+                `Amount payable: ₹${payable}`,
+                "",
+                "Please find your confirmation voucher attached separately.",
+                "",
+                "Warm regards,",
+                "Hotel Rishikanya Grand",
+                "Phukan Ali, Jorhat, Assam - 785001",
+                "+91 9181545634"
+            ].join("\n");
 
-  const checkIn =
-    document.getElementById("v-checkIn").textContent.trim();
+            const whatsappURL = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 
-  const checkOut =
-    document.getElementById("v-checkOut").textContent.trim();
+            // Open WhatsApp directly from the button click.
+            window.open(whatsappURL, "_blank", "noopener,noreferrer");
 
-  const payable =
-    document.getElementById("v-payable").textContent.trim();
-
-  const message = [
-    `Dear ${guestName},`,
-    "",
-    "Greetings from Hotel Rishikanya Grand, Jorhat!",
-    "",
-    "Your hotel booking confirmation is ready.",
-    `Confirmation No.: ${voucherNo}`,
-    `Check-in: ${checkIn}`,
-    `Check-out: ${checkOut}`,
-    `Amount payable: ₹${payable}`,
-    "",
-    "Please find your confirmation voucher attached separately.",
-    "",
-    "Warm regards,",
-    "Hotel Rishikanya Grand",
-    "Phukan Ali, Jorhat, Assam - 785001",
-    "+91 9181545634"
-  ].join("\n");
-
-  const whatsappURL =
-    `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-
-  // Open WhatsApp directly from the button click.
-  window.open(whatsappURL, "_blank", "noopener,noreferrer");
-
-  // Download the PDF separately for manual attachment.
-  downloadPDF();
-}
-
-                // 4. Encode the message for URL
-                const encodedMsg = encodeURIComponent(message);
-                
-                // 5. Show instruction alert
-                alert("✅ PDF Downloaded Successfully!\n\n📱 WhatsApp is now opening...\n\n⚠️ IMPORTANT: Web browsers cannot auto-attach files.\nPlease click the 'Attach' (📎) icon in WhatsApp and select the PDF that just downloaded to your device.");
-                
-                // 6. Open WhatsApp
-                window.open(`https://wa.me/${phone}?text=${encodedMsg}`, '_blank');
-            });
+            // Download the PDF separately for manual attachment.
+            downloadPDF();
         }
 
         function resetForm() {
