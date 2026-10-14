@@ -478,38 +478,68 @@
             window.print();
         }
 
-        function sendWhatsApp() {
-            // 1. Get and clean the phone number
-            let phone = document.getElementById('guestWhatsapp').value.replace(/\D/g, ''); // Remove non-digits
-            
-            // If user entered a 10-digit Indian number, prepend 91
-            if (phone.length === 10) {
-                phone = '91' + phone;
-            }
-            
-            if (phone.length < 10) {
-                alert("Please enter a valid WhatsApp number (e.g., 919876543210).");
-                return;
-            }
+        
+function sendWhatsApp() {
+  const phoneInput = document.getElementById("guestWhatsapp");
+  let phone = phoneInput.value.replace(/\D/g, "");
 
-            // 2. Download the PDF first so it's ready in the Downloads folder
-            downloadPDF().then(() => {
-                // 3. Construct the exact message
-                const guestName = document.getElementById('v-guestName').innerText;
-                
-                const message = `Dear Sir,
+  // Add India's country code when a 10-digit number is entered.
+  if (phone.length === 10) {
+    phone = "91" + phone;
+  }
 
-Greetings from Hotel Rishikanya Grand, Jorhat! 
+  // International format: country code + subscriber number.
+  if (!/^[1-9]\d{7,14}$/.test(phone)) {
+    alert(
+      "Enter a valid WhatsApp number with country code, e.g. 919876543210."
+    );
+    phoneInput.focus();
+    return;
+  }
 
-Thank you for choosing to stay with us. Please find attached your Booking Confirmation Voucher for your upcoming visit. Kindly review the details and let us know if any corrections or changes are required.
+  const guestName =
+    document.getElementById("v-guestName").textContent.trim() || "Guest";
 
-We look forward to welcoming you and making your stay comfortable and memorable.
+  const voucherNo =
+    document.getElementById("v-voucherNo").textContent.trim();
 
-Warm regards,
-Hotel Rishikanya Grand
-📍 Phukan Ali, Jorhat, Assam – 785001
-📞 +91 9181545634
-✉️ hotel.rishikanyagrand@gmail.com`;
+  const checkIn =
+    document.getElementById("v-checkIn").textContent.trim();
+
+  const checkOut =
+    document.getElementById("v-checkOut").textContent.trim();
+
+  const payable =
+    document.getElementById("v-payable").textContent.trim();
+
+  const message = [
+    `Dear ${guestName},`,
+    "",
+    "Greetings from Hotel Rishikanya Grand, Jorhat!",
+    "",
+    "Your hotel booking confirmation is ready.",
+    `Confirmation No.: ${voucherNo}`,
+    `Check-in: ${checkIn}`,
+    `Check-out: ${checkOut}`,
+    `Amount payable: ₹${payable}`,
+    "",
+    "Please find your confirmation voucher attached separately.",
+    "",
+    "Warm regards,",
+    "Hotel Rishikanya Grand",
+    "Phukan Ali, Jorhat, Assam - 785001",
+    "+91 9181545634"
+  ].join("\n");
+
+  const whatsappURL =
+    `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+
+  // Open WhatsApp directly from the button click.
+  window.open(whatsappURL, "_blank", "noopener,noreferrer");
+
+  // Download the PDF separately for manual attachment.
+  downloadPDF();
+}
 
                 // 4. Encode the message for URL
                 const encodedMsg = encodeURIComponent(message);
