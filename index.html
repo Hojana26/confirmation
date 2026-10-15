@@ -214,9 +214,9 @@
             </div>
 
             <div class="form-group full-width">
-                <label>Hotel Logo (optional)</label>
+                <label>Replace Hotel Logo (optional)</label>
                 <input type="file" id="logoFile" accept="image/*">
-                <div class="logo-hint">Upload your logo here so it is always included in the PDF/JPG export (more reliable than logo.png).</div>
+                <div class="logo-hint">The logo loads automatically from GitHub. If it can't load (offline/blocked), upload it once here and it will be remembered on this device.</div>
             </div>
 
             <div class="form-group full-width" style="border-top: 2px solid #eee; padding-top: 15px; margin-top: 10px;">
@@ -315,7 +315,7 @@
         
         <div id="voucher-content" class="voucher-page">
             <div class="voucher-header">
-                <img src="logo.png" alt="Hotel Rishikanya Grand Logo" class="voucher-logo" onerror="this.style.display='none'">
+                <img src="https://raw.githubusercontent.com/Hojana26/confirmation/b577be01c5edc6dc8d241d6e474e2924600ac830/logo.png" crossorigin="anonymous" alt="Hotel Rishikanya Grand Logo" class="voucher-logo" onerror="this.style.display='none'">
                 <h1>VOUCHER NO. <span id="v-voucherNo"></span></h1>
                 <div class="hotel-info">
                     <span id="v-hotelAddress"></span><br>
@@ -514,12 +514,74 @@
         }
 
         // ---------- LOGO HANDLING ----------
-        let logoData = null;
+        const COMMIT = 'b577be01c5edc6dc8d241d6e474e2924600ac830';
+        // Tried in order until one loads (all of these allow cross-origin use)
+        const LOGO_SOURCES = [
+            `https://raw.githubusercontent.com/Hojana26/confirmation/${COMMIT}/logo.png`,
+            `https://cdn.jsdelivr.net/gh/Hojana26/confirmation@${COMMIT}/logo.png`,
+            `https://rawcdn.githack.com/Hojana26/confirmation/${COMMIT}/logo.png`,
+            'logo.png'
+        ];
+        let logoData = null;      // data URL used for the voucher + exports
+        let uploadedLogo = false;
+
+        function applyLogo(data) {
+            logoData = data;
+            document.querySelectorAll('.voucher-logo').forEach(i => { i.src = data; i.style.display = 'block'; });
+        }
+
+        // Load an image via <img crossorigin> and convert it to a data URL through a canvas
+        function loadImageAsDataURL(url) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                    try {
+                        const c = document.createElement('canvas');
+                        c.width = img.naturalWidth;
+                        c.height = img.naturalHeight;
+                        c.getContext('2d').drawImage(img, 0, 0);
+                        resolve(c.toDataURL('image/png'));
+                    } catch (e) { reject(e); }
+                };
+                img.onerror = () => reject(new Error('Could not load ' + url));
+                img.src = url;
+            });
+        }
+
+        async function preloadDefaultLogo() {
+            // 1) Logo saved from a previous upload / successful load (works offline)
+            try {
+                const saved = localStorage.getItem('voucherLogo');
+                if (saved) applyLogo(saved);
+            } catch (e) {}
+
+            // 2) Try each online source
+            for (const url of LOGO_SOURCES) {
+                try {
+                    const data = await loadImageAsDataURL(url);
+                    if (!uploadedLogo) applyLogo(data);
+                    try { localStorage.setItem('voucherLogo', data); } catch (e) {}
+                    return;
+                } catch (err) {
+                    console.warn('Logo source failed:', url);
+                }
+            }
+            if (!logoData) {
+                console.warn('Logo could not be loaded from any source. Use the "Replace Hotel Logo" upload once and it will be remembered.');
+            }
+        }
+        preloadDefaultLogo();
+
         document.getElementById('logoFile').addEventListener('change', function () {
             const f = this.files && this.files[0];
-            if (!f) { logoData = null; return; }
+            if (!f) { return; }
             const reader = new FileReader();
-            reader.onload = e => { logoData = e.target.result; };
+            reader.onload = e => {
+                uploadedLogo = true;
+                applyLogo(e.target.result);
+                try { localStorage.setItem('voucherLogo', e.target.result); } catch (err) {}
+            };
             reader.readAsDataURL(f);
         });
 
@@ -581,7 +643,7 @@
                 } catch (taintErr) {
                     clone.querySelectorAll('img').forEach(i => { i.style.display = 'none'; });
                     canvas = await html2canvas(clone, opts);
-                    alert("The logo could not be included (browser security blocks local logo.png). Upload the logo with the 'Hotel Logo' field in the form to include it.");
+                    alert("The logo could not be included in the export (check your internet connection). You can also upload the logo using the 'Replace Hotel Logo' field in the form.");
                 }
                 return canvas;
             } finally {
@@ -680,12 +742,12 @@
                 `Check-out: ${checkOut}`,
                 `Amount payable: ₹${payable}`,
                 "",
-                "Please find your confirmation voucher attached File",
+                "Please find your confirmation voucher attached separately.",
                 "",
-                "<b>Warm regards,",
+                "Warm regards,",
                 "Hotel Rishikanya Grand",
                 "Phukan Ali, Jorhat, Assam - 785001",
-                "+91 9181545634<b>"
+                "+91 9181545634"
             ].join("\n");
 
             const whatsappURL = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
