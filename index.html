@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hotel Confirmation Voucher Generator</title>
-    <!-- Library to convert HTML to PDF -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.min.js"></script>
+    <!-- Libraries: HTML -> canvas (JPG) and canvas -> PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -61,6 +62,10 @@
         
         .btn-print { background-color: #34495e; }
         .btn-print:hover { background-color: #2c3e50; }
+        .btn-jpg { background-color: #e67e22; }
+        .btn-jpg:hover { background-color: #f39c12; }
+        .btn:disabled { opacity: .6; cursor: wait; }
+        .logo-hint { font-size: 12px; color: #888; margin-top: 4px; }
         .btn-whatsapp { background-color: #25D366; }
         .btn-whatsapp:hover { background-color: #128C7E; }
 
@@ -208,6 +213,12 @@
                 <input type="email" id="hotelEmail" value="hotel.risikanyagrand@gmail.com">
             </div>
 
+            <div class="form-group full-width">
+                <label>Hotel Logo (optional)</label>
+                <input type="file" id="logoFile" accept="image/*">
+                <div class="logo-hint">Upload your logo here so it is always included in the PDF/JPG export (more reliable than logo.png).</div>
+            </div>
+
             <div class="form-group full-width" style="border-top: 2px solid #eee; padding-top: 15px; margin-top: 10px;">
                 <label><strong>Voucher & Guest Details</strong></label>
             </div>
@@ -295,7 +306,8 @@
     <!-- RESULT / PDF VIEW SECTION -->
     <div id="voucher-result">
         <div class="action-btns" id="actionButtons">
-            <button class="btn" onclick="downloadPDF()">⬇ Download PDF</button>
+            <button class="btn" id="btnPdf" onclick="downloadPDF()">⬇ Download PDF</button>
+            <button class="btn btn-jpg" id="btnJpg" onclick="downloadJPG()">🖼 Download JPG</button>
             <button class="btn btn-print" onclick="printVoucher()">🖨 Print</button>
             <button class="btn btn-whatsapp" onclick="sendWhatsApp()">📱 Send via WhatsApp</button>
             <button class="btn btn-secondary" onclick="resetForm()">✎ Edit Details</button>
@@ -493,34 +505,142 @@
             
             document.getElementById('v-hotelNameFooter').innerText = document.getElementById('hotelName').value;
 
+            const logoEl = document.querySelector('#voucher-content .voucher-logo');
+            if (logoEl && logoData) { logoEl.src = logoData; logoEl.style.display = 'block'; }
+
             document.getElementById('form-section').style.display = 'none';
             document.getElementById('voucher-result').style.display = 'block';
             window.scrollTo(0, 0);
         }
 
-        function downloadPDF() {
-            const element = document.getElementById('voucher-content');
-            const guestName = document.getElementById('v-guestName').innerText || 'Guest';
-            const voucherNo = document.getElementById('v-voucherNo').innerText;
-            const btns = document.getElementById('actionButtons');
+        // ---------- LOGO HANDLING ----------
+        let logoData = null;
+        document.getElementById('logoFile').addEventListener('change', function () {
+            const f = this.files && this.files[0];
+            if (!f) { logoData = null; return; }
+            const reader = new FileReader();
+            reader.onload = e => { logoData = e.target.result; };
+            reader.readAsDataURL(f);
+        });
 
-            if(btns) btns.style.display = 'none';
+        // ---------- EXPORT HELPERS ----------
+        function getFileBase() {
+            const guest = (document.getElementById('v-guestName').innerText || 'Guest').trim().replace(/[^\w]+/g, '_');
+            const vno = (document.getElementById('v-voucherNo').innerText || '').replace(/[\/\\]/g, '-');
+            return `Voucher_${vno}_${guest}`;
+        }
 
-            const opt = {
-                margin:       0,
-                filename:     `Voucher_${voucherNo}_${guestName.replace(/\s/g, '_')}.pdf`,
-                image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true, allowTaint: true, logging: false },
-                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            };
+        function saveBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 2000);
+        }
 
-            return html2pdf().set(opt).from(element).save().then(() => {
-                if(btns) btns.style.display = 'flex';
-            }).catch(err => {
-                console.error(err);
-                alert("PDF Generation Failed! Ensure 'logo.png' is in the folder or try a different browser.");
-                if(btns) btns.style.display = 'flex';
+        function setBusy(busy) {
+            ['btnPdf', 'btnJpg'].forEach(id => {
+                const b = document.getElementById(id);
+                if (b) b.disabled = busy;
             });
+        }
+
+        // Renders the voucher from an off-screen clone at a fixed A4 size,
+        // so it is not affected by scroll position, window size or hidden buttons.
+        async function renderVoucherCanvas() {
+            const src = document.getElementById('voucher-content');
+            const stage = document.createElement('div');
+            stage.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;background:#fff;';
+            const clone = src.cloneNode(true);
+            clone.removeAttribute('id');
+            clone.style.cssText = 'width:794px;min-height:1123px;margin:0;box-shadow:none;background:#fff;';
+            stage.appendChild(clone);
+            document.body.appendChild(stage);
+
+            try {
+                // Use the uploaded logo if there is one
+                const logo = clone.querySelector('.voucher-logo');
+                if (logo && logoData) { logo.src = logoData; logo.style.display = 'block'; }
+
+                // Wait for images to finish loading
+                await Promise.all(Array.from(clone.querySelectorAll('img')).map(img =>
+                    (img.complete && img.naturalWidth) ? Promise.resolve()
+                        : new Promise(res => { img.onload = img.onerror = res; })
+                ));
+                if (document.fonts && document.fonts.ready) { await document.fonts.ready; }
+
+                const opts = { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false,
+                               scrollX: 0, scrollY: 0, windowWidth: 794 };
+
+                let canvas = await html2canvas(clone, opts);
+                try {
+                    canvas.toDataURL('image/jpeg'); // throws if canvas is tainted (e.g. logo.png on file://)
+                } catch (taintErr) {
+                    clone.querySelectorAll('img').forEach(i => { i.style.display = 'none'; });
+                    canvas = await html2canvas(clone, opts);
+                    alert("The logo could not be included (browser security blocks local logo.png). Upload the logo with the 'Hotel Logo' field in the form to include it.");
+                }
+                return canvas;
+            } finally {
+                document.body.removeChild(stage);
+            }
+        }
+
+        async function downloadJPG() {
+            setBusy(true);
+            try {
+                const canvas = await renderVoucherCanvas();
+                const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.95));
+                if (!blob) throw new Error('Could not create image');
+                saveBlob(blob, getFileBase() + '.jpg');
+            } catch (err) {
+                console.error(err);
+                alert('JPG export failed: ' + err.message);
+            } finally {
+                setBusy(false);
+            }
+        }
+
+        async function downloadPDF() {
+            setBusy(true);
+            try {
+                const canvas = await renderVoucherCanvas();
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+                const pageW = 210, pageH = 297;
+                const imgH = canvas.height * pageW / canvas.width;
+
+                if (imgH <= pageH + 0.5) {
+                    pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pageW, Math.min(imgH, pageH));
+                } else {
+                    // Content taller than one page: slice into A4 pages
+                    const pxPerPage = Math.floor(canvas.width * pageH / pageW);
+                    let y = 0, first = true;
+                    while (y < canvas.height) {
+                        const sliceH = Math.min(pxPerPage, canvas.height - y);
+                        const part = document.createElement('canvas');
+                        part.width = canvas.width;
+                        part.height = sliceH;
+                        const ctx = part.getContext('2d');
+                        ctx.fillStyle = '#fff';
+                        ctx.fillRect(0, 0, part.width, part.height);
+                        ctx.drawImage(canvas, 0, y, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+                        if (!first) pdf.addPage();
+                        pdf.addImage(part.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pageW, sliceH * pageW / canvas.width);
+                        y += sliceH;
+                        first = false;
+                    }
+                }
+                saveBlob(pdf.output('blob'), getFileBase() + '.pdf');
+            } catch (err) {
+                console.error(err);
+                alert('PDF export failed: ' + err.message);
+            } finally {
+                setBusy(false);
+            }
         }
 
         function printVoucher() {
@@ -560,12 +680,12 @@
                 `Check-out: ${checkOut}`,
                 `Amount payable: ₹${payable}`,
                 "",
-                "Please find your confirmation voucher attached separately.",
+                "Please find your confirmation voucher attached File",
                 "",
-                "Warm regards,",
+                "<b>Warm regards,",
                 "Hotel Rishikanya Grand",
                 "Phukan Ali, Jorhat, Assam - 785001",
-                "+91 9181545634"
+                "+91 9181545634<b>"
             ].join("\n");
 
             const whatsappURL = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
